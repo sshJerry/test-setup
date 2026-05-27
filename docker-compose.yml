@@ -1,0 +1,172 @@
+version: '3.8'
+
+services:
+  # --- NETWORKING & SECURITY ---
+  
+  # Gluetun: Handles Proton VPN connection and Port Forwarding
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "8888:8888/tcp" # Gluetun control port (optional, for health checks)
+      - "6881:6881/tcp" # qBittorrent incoming port (mapped dynamically by Proton)
+      - "6881:6881/udp"
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      # You will need to set these via .env file for security
+      - WIREGUARD_PRIVATE_KEY=${PROTON_WG_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${PROTON_WG_ADDRESSES}
+      - SERVER_COUNTRIES=US # Change to your preferred P2P country
+      - SERVER_CITIES=New York # Optional: specific city
+      - PORT_FORWARDING=on
+      - PORT_FORWARDING_PROVIDER=protonvpn
+      - PORT_FORWARDING_STATUS_FILE=/tmp/gluetun/forwarded_port
+    volumes:
+      - ./config/gluetun:/gluetun
+    restart: unless-stopped
+    networks:
+      - media-net
+
+  # --- MEDIA SERVICES ---
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    user: 1000:1000
+    volumes:
+      - ./config/jellyfin:/config
+      - /mnt/media:/media:ro # Read-only for safety, or remove :ro if you need writes
+      - ./data/jellyfin/transcode:/transcode # Cache dir (optional)
+    ports:
+      - "8096:8096"
+    environment:
+      - TZ=America/New_York # Change to your timezone
+    networks:
+      - media-net
+    restart: unless-stopped
+    # No GPU passthrough (Direct Play only)
+
+  # --- DOWNLOAD & AUTOMATION ---
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: service:gluetun # CRITICAL: Routes traffic through VPN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - WEBUI_PORT=8080
+    volumes:
+      - ./config/qbittorrent:/config
+      - /mnt/media/downloads:/downloads # Map to your media drive
+    restart: unless-stopped
+    depends_on:
+      - gluetun
+
+  plex-autodl-irssi: # Placeholder if you use it, otherwise skip. Using Prowlarr/Radarr/Sonarr directly.
+    # Not included as you requested Radarr/Sonarr/Lidarr directly.
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./config/radarr:/config
+      - /mnt/media:/data
+      - /mnt/media/downloads:/downloads
+    ports:
+      - "7878:7878"
+    networks:
+      - media-net
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./config/sonarr:/config
+      - /mnt/media:/data
+      - /mnt/media/downloads:/downloads
+    ports:
+      - "8989:8989"
+    networks:
+      - media-net
+    restart: unless-stopped
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./config/lidarr:/config
+      - /mnt/media:/data
+      - /mnt/media/downloads:/downloads
+    ports:
+      - "8686:8686"
+    networks:
+      - media-net
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    networks:
+      - media-net
+    restart: unless-stopped
+
+  # --- MONITORING & UTILS ---
+
+  netdata:
+    image: netdata/netdata
+    container_name: netdata
+    pid: host
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ./config/netdata:/etc/netdata
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "19999:19999"
+    restart: unless-stopped
+    networks:
+      - media-net
+
+  # --- DATABASE (Shared for Arr Stack) ---
+  # Optional: If you prefer individual SQLite DBs (default for LinuxServer images), remove this.
+  # Keeping it here if you want centralized DB management later.
+  # For now, using default SQLite for simplicity and lower RAM usage on legacy hardware.
+  # postgres:
+  #   image: postgres:15-alpine
+  #   ...
+
+networks:
+  media-net:
+    driver: bridge
