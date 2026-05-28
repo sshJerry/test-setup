@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+      - "8080:80/tcp"
+    environment:
+      TZ: 'UTC' # Change to your timezone
+      WEBPASSWORD: 'change-me-securely'
+    volumes:
+      - ./pihole/etc-pihole:/etc/pihole
+      - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./jellyfin/config:/config
+      - /mnt/data1/media:/data/media
+      - /mnt/data2/media:/data/media2
+    ports:
+      - "8096:8096"
+    restart: unless-stopped
+
+  postgresql:
+    image: postgres:15-alpine
+    container_name: postgresql
+    environment:
+      POSTGRES_USER: arrstack
+      POSTGRES_PASSWORD: 'change-me-securely'
+      POSTGRES_DB: arrstack
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata
+    pid: host
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+    volumes:
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+    restart: unless-stopped
+
+volumes:
+  netdataconfig:
+  netdatalib:
+  netdatacache:
