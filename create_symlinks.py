@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-import os
-import re
+import os, re
 from pathlib import Path
 
 def extract_show_info(dirname):
@@ -70,6 +69,6 @@ def create_symlink_library(src_dirs, dst_base):
 
 if __name__ == "__main__":
     SRC_DIRS = ["/mnt/data1/TV", "/mnt/data1/A"]
-    DST_BASE = "/mnt/data1/Symlinks"
+    DST_BASE = Path.home() / "Symlinks"  # Creates ~/Symlinks
     create_symlink_library(SRC_DIRS, DST_BASE)
-    print("Symlink library created.")
+    print("Done")
